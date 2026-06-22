@@ -1,0 +1,65 @@
+{% extends "site.html" %}
+{% block title %}STEAK: My Extensions{% endblock title %}
+{% block headline %}STEAK: My Extensions{% endblock headline %}
+
+{% block body %}
+<p>Welcome, {{attributes['http://schemas.goauthentik.io/2021/02/saml/username'][0]}}!</p>
+
+<h3>My Extensions</h3>
+{% if extensions %}
+<table border="1">
+  <tr>
+    <th>Extension</th>
+    <th>Name</th>
+    <th>Published?</th>
+    <th>Type</th>
+    <th>Actions</th>
+  </tr>
+  {% for e in extensions %}
+    <tr>
+      <td>{{e["extn"]}}</td>
+      <td>
+        <form action="/rename_extn" method="post">
+          <input type="text" name="name" value="{{e["name"]}}">
+          <input type="hidden" name="extn" value="{{e["extn"]}}">
+          <input type="submit" value="Rename">
+        </form>
+      </td>
+      <td>
+        <form>
+          <input type="checkbox" name="published" value="1" {% if e["published"] %}checked{% endif %}>
+        </form>
+      </td>
+      <td>{% if e["switch"] == 11 %}SIP{% else %}TDM{% endif %}</td>
+      <td>
+        {% if e["switch"] == 11 %}
+          <button onclick="alert('Not implemented')">Get Credentials</button>
+        {% else %}
+          <button onclick="window.dialer.dialDTMF('{{e["auth_code"]}}')">Play Auth Code</button>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+{% else %}
+  <p>You have no extensions.</p>
+{% endif %}
+
+<h3>Add a New Extension</h3>
+<form action="/app/extn" method="post">
+  <label for="extn">Extension:</label>
+  <input type="text" name="extn" placeholder="NXXX" maxlength="4" minlength="4" required>
+  <label for="name">Name:</label>
+  <input type="text" name="name" placeholder="Name" required>
+  <label for="published">Published:</label>
+  <input type="checkbox" name="published" value="1" checked>
+  <label for="type">Type:</label>
+  <select name="type">
+    <option value="pots" selected>POTS</option>
+    <option value="sip">SIP</option>
+    <option value="other">Other</option>
+  </select>
+  <input type="submit" value="Create">
+</form>
+
+{% endblock body %}

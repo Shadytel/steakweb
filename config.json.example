@@ -1,0 +1,28 @@
+{
+    "saml_settings": {
+        "strict": true,
+        "debug": false,
+        "sp": {
+            "entityId": "https://steak.shady.tel/saml/service-provider-metadata",
+            "assertionConsumerService": {
+                "url": "https://steak.shady.tel/saml/acs",
+                "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+            },
+            "NameIDFormat": "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
+        },
+        "security": {
+            "wantMessagesSigned": true,
+            "wantAssertionsSigned": true
+        }
+    },
+    "saml_req_data": {
+        "https": "on",
+        "http_host": "steak.shady.tel",
+        "server_port": "443",
+        "script_name": "/"
+    },
+    "socket_path": path to socket,
+    "dbconnstr": "postgresql://CONNECTION STRING",
+    "cookiekey": 32 base64-encoded bytes,
+    "idp_metadata": "https://identity.shady.tel/application/saml/steak/metadata/"
+}

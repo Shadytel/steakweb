@@ -1,0 +1,27 @@
+{% extends "site.html" %}
+{% block title %}STEAK: Directory{% endblock title %}
+{% block headline %}STEAK: Directory{% endblock headline %}
+
+{% block body %}
+<h3>Published Extensions</h3>
+<table border="1">
+  <tr>
+    <th>Extension</th>
+    <th>Name</th>
+    <th>Actions</th>
+  </tr>
+  {% for e in extensions %}
+    <tr>
+      <td><a href="tel:{{e["extn"]}}">{{e["extn"]}}</a></td>
+      <td>
+        {{e["name"]}}
+      </td>
+      <td>
+        <button onclick="window.dialer.dial('{{e["extn"]}}')">Dial</button>
+      </td>
+    </tr>
+  {% endfor %}
+  </table>
+{% endif %}
+
+{% endblock body %}
