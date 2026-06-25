@@ -49,7 +49,7 @@ def check_auth_isadmin(session):
             return 'Extension Admins' in groups
     return False
 
-def gen_sip_pw():
+def gen_sip_pw(length=24):
     characters = string.ascii_letters + string.digits + '_-+!@#$%^&*()='
     return ''.join(random.choice(characters) for _ in range(length))
 
