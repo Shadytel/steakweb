@@ -159,7 +159,11 @@ async def create_extn(request):
     name = data.get('name', '')
     publish = 't' if data.get('publish') else 'f'
     authcode = ''.join([str(random.randint(0, 9)) for _ in range(12)])
-    n = await dbconn.execute('INSERT INTO registered_extensions (extn, name, userid, auth_code, publish) VALUES ($1, $2, $3, $4, $5)', extnum, name, int(session['uid']), authcode, publish)
+    try:
+        n = await dbconn.execute('INSERT INTO registered_extensions (extn, name, userid, auth_code, publish) VALUES ($1, $2, $3, $4, $5)', extnum, name, int(session['uid']), authcode, publish)
+    except asyncpg.UniqueViolationError:
+        session['error'] = 'That extension is already taken; please choose another'
+        raise web.HTTPFound('/')
     if n != 'INSERT 0 1':
         session['error'] = 'Could not subscribe service; contact support'
         print(f'While creating extension: {n}')
