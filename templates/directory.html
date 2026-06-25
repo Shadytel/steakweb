@@ -16,7 +16,7 @@
       <td>{{e["name"]}}</td>
       <td>
         <a href="tel:{{e["extn"]}}">{{e["extn"]}}</a>
-        <button onclick="window.dialer.dial('{{e["extn"]}}')">Dial</button>
+        <button onclick="window.dialer.dialDTMF('{{e["extn"]}}')">Dial</button>
       </td>
     </tr>
   {% endfor %}
