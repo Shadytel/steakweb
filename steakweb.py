@@ -77,22 +77,21 @@ async def homepage(request):
     return r
 
 async def directory(request):
-    # display all published extensions
-    session = await aiohttp_session.get_session(request)
-    check_session_exp(session)
+    # public listing of published extensions (no auth)
     if dbconn is None:
         await init_db_pool()
-    rows = None
-    rows = await dbconn.fetch("SELECT extn, name FROM registered_extensions WHERE publish = 't'")
+    rows = await dbconn.fetch("SELECT extn, name FROM registered_extensions WHERE publish = 't' ORDER BY lower(name), extn")
+    context = { 'extensions': rows }
+    return aiohttp_jinja2.render_template('directory.html', request, context)
 
-    # render the template with the list and the status of the last request (from the session)
-    context = { 'extensions': rows, 'error': session.get('error', None), 'attributes': session.get('attributes', None) }
-    r = aiohttp_jinja2.render_template('directory.html', request, context)
 
-    # clear the status
-    session['error'] = None
-
-    return r
+async def directory_json(request):
+    # public JSON of published extensions (no auth); consumable by shady.tel
+    if dbconn is None:
+        await init_db_pool()
+    rows = await dbconn.fetch("SELECT extn, name FROM registered_extensions WHERE publish = 't' ORDER BY lower(name), extn")
+    listings = [{ 'name': r['name'], 'number': r['extn'] } for r in rows]
+    return web.json_response(listings, headers={'Access-Control-Allow-Origin': '*'})
 
 ### post request handlers
 
@@ -279,6 +278,7 @@ if __name__ == '__main__':
 
     app.add_routes([web.get('/', homepage)])
     app.add_routes([web.get('/directory', directory)])
+    app.add_routes([web.get('/api/directory.json', directory_json)])
 
     app.add_routes([web.post('/rename_extn', rename_extn)])
     app.add_routes([web.post('/delete_extn', delete_extn)])

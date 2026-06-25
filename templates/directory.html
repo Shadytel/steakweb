@@ -1,26 +1,28 @@
 {% extends "site.html" %}
-{% block title %}STEAK: Directory{% endblock title %}
-{% block headline %}STEAK: Directory{% endblock headline %}
+{% block title %}Shadytel Directory Assistance{% endblock title %}
+{% block headline %}Directory Assistance{% endblock headline %}
 
 {% block body %}
-<h3>Published Extensions</h3>
+<p>A listing of published numbers on the Shadytel network. Dial any listing from any Shadytel telephone.</p>
+
+{% if extensions %}
 <table border="1">
   <tr>
-    <th>Extension</th>
     <th>Name</th>
-    <th>Actions</th>
+    <th>Number</th>
   </tr>
   {% for e in extensions %}
     <tr>
-      <td><a href="tel:{{e["extn"]}}">{{e["extn"]}}</a></td>
+      <td>{{e["name"]}}</td>
       <td>
-        {{e["name"]}}
-      </td>
-      <td>
+        <a href="tel:{{e["extn"]}}">{{e["extn"]}}</a>
         <button onclick="window.dialer.dial('{{e["extn"]}}')">Dial</button>
       </td>
     </tr>
   {% endfor %}
   </table>
+{% else %}
+  <p>No listings have been published yet.</p>
+{% endif %}
 
 {% endblock body %}
