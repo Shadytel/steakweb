@@ -87,7 +87,7 @@ async def directory(request):
 
     # render the template with the list and the status of the last request (from the session)
     context = { 'extensions': rows, 'error': session.get('error', None), 'attributes': session.get('attributes', None) }
-    r = aiohttp_jinja2.render_template('homepage.html', request, context)
+    r = aiohttp_jinja2.render_template('directory.html', request, context)
 
     # clear the status
     session['error'] = None
