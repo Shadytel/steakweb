@@ -277,7 +277,7 @@ if __name__ == '__main__':
     app.add_routes([web.post('/delete_extn', delete_extn)])
     app.add_routes([web.post('/create_extn', create_extn)])
     app.add_routes([web.post('/publish_extn', publish_extn)])
-    app.add_routes([web.post('/unpublish_extn', publish_extn)])
+    app.add_routes([web.post('/unpublish_extn', unpublish_extn)])
     app.add_routes([web.post('/prov_to_sip', prov_to_sip)])
 
     app.add_routes([web.static('/static', os.path.join(os.getcwd(), 'static'))])
