@@ -129,7 +129,7 @@ async def delete_extn(request):
     if check_auth_isadmin(session):
         n = await dbconn.execute('DELETE FROM registered_extensions WHERE switch IS NULL AND extn = $1', int(data['extn']))
     else:
-        n = await dbconn.execute('DELETE FROM registered_extensions WHERE switch IS NULL AND extn = $1 AND userid = $2', data['name'], int(data['extn']), int(session['uid']))
+        n = await dbconn.execute('DELETE FROM registered_extensions WHERE switch IS NULL AND extn = $1 AND userid = $2', int(data['extn']), int(session['uid']))
 
     if n != 'DELETE 1':
         session['error'] = 'Could not unsubscribe service; contact support'
