@@ -46,13 +46,13 @@
 {% endif %}
 
 <h3>Add a New Extension</h3>
-<form action="/app/extn" method="post">
+<form action="/create_extn" method="post">
   <label for="extn">Extension:</label>
-  <input type="text" name="extn" placeholder="NXXX" maxlength="4" minlength="4" required>
+  <input type="text" name="extn" placeholder="NXXX" maxlength="4" minlength="4" pattern="[2-6][0-9]{3}" title="Four digits starting with 2, 3, 4, 5, or 6" required>
   <label for="name">Name:</label>
   <input type="text" name="name" placeholder="Name" required>
   <label for="published">Published:</label>
-  <input type="checkbox" name="published" value="1" checked>
+  <input type="checkbox" name="publish" value="1" checked>
   <label for="type">Type:</label>
   <select name="type">
     <option value="pots" selected>POTS</option>
