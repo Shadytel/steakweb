@@ -49,9 +49,34 @@ def check_auth_isadmin(session):
             return 'Extension Admins' in groups
     return False
 
-def gen_sip_pw():
+def gen_sip_pw(length=24):
     characters = string.ascii_letters + string.digits + '_-+!@#$%^&*()='
     return ''.join(random.choice(characters) for _ in range(length))
+
+### DEV ONLY ------------------------------------------------------------------
+# Everything guarded by STEAKWEB_DEV is completely inert in production: when the
+# env var is unset, DEV_MODE is False, the dev route is never registered, and
+# none of this code path runs. It exists only so a developer can exercise the
+# authenticated flows (homepage, create_extn, ...) locally without a real
+# Authentik/SAML IdP. See dev/README.md.
+DEV_MODE = bool(os.environ.get('STEAKWEB_DEV'))
+
+async def dev_login(request):
+    # DEV ONLY: forge a logged-in session (no IdP). Mirrors the shape that
+    # saml_acs() produces: uid, attributes (with a goauthentik username), iat.
+    # Append ?admin=1 to also join the "Extension Admins" group.
+    session = await aiohttp_session.new_session(request)
+    session['uid'] = os.environ.get('STEAKWEB_DEV_UID', '1010')
+    username = os.environ.get('STEAKWEB_DEV_USER', 'devuser')
+    attributes = {
+        'http://schemas.goauthentik.io/2021/02/saml/username': [username],
+    }
+    if 'admin' in request.query:
+        attributes['http://schemas.xmlsoap.org/claims/Group'] = ['Extension Admins']
+    session['attributes'] = attributes
+    session['iat'] = time.time()
+    raise web.HTTPFound('/')
+### END DEV ONLY --------------------------------------------------------------
 
 ### get request handlers
 
@@ -77,22 +102,21 @@ async def homepage(request):
     return r
 
 async def directory(request):
-    # display all published extensions
-    session = await aiohttp_session.get_session(request)
-    check_session_exp(session)
+    # public listing of published extensions (no auth)
     if dbconn is None:
         await init_db_pool()
-    rows = None
-    rows = await dbconn.fetch("SELECT extn, name FROM registered_extensions WHERE publish = 't'")
+    rows = await dbconn.fetch("SELECT extn, name FROM registered_extensions WHERE publish = 't' ORDER BY lower(name), extn")
+    context = { 'extensions': rows }
+    return aiohttp_jinja2.render_template('directory.html', request, context)
 
-    # render the template with the list and the status of the last request (from the session)
-    context = { 'extensions': rows, 'error': session.get('error', None), 'attributes': session.get('attributes', None) }
-    r = aiohttp_jinja2.render_template('homepage.html', request, context)
 
-    # clear the status
-    session['error'] = None
-
-    return r
+async def directory_json(request):
+    # public JSON of published extensions (no auth); consumable by shady.tel
+    if dbconn is None:
+        await init_db_pool()
+    rows = await dbconn.fetch("SELECT extn, name FROM registered_extensions WHERE publish = 't' ORDER BY lower(name), extn")
+    listings = [{ 'name': r['name'], 'number': r['extn'] } for r in rows]
+    return web.json_response(listings, headers={'Access-Control-Allow-Origin': '*'})
 
 ### post request handlers
 
@@ -129,7 +153,7 @@ async def delete_extn(request):
     if check_auth_isadmin(session):
         n = await dbconn.execute('DELETE FROM registered_extensions WHERE switch IS NULL AND extn = $1', int(data['extn']))
     else:
-        n = await dbconn.execute('DELETE FROM registered_extensions WHERE switch IS NULL AND extn = $1 AND userid = $2', data['name'], int(data['extn']), int(session['uid']))
+        n = await dbconn.execute('DELETE FROM registered_extensions WHERE switch IS NULL AND extn = $1 AND userid = $2', int(data['extn']), int(session['uid']))
 
     if n != 'DELETE 1':
         session['error'] = 'Could not unsubscribe service; contact support'
@@ -139,21 +163,32 @@ async def delete_extn(request):
 
 async def create_extn(request):
     # make a new extension with a random auth_code
-    # if the DB doesn't like it, give the error in session[error]
+    # validate the submitted extension up front so bad input (e.g. letters)
+    # gives the customer an error instead of a 500
     data = await request.post()
     session = await aiohttp_session.get_session(request)
     check_session_exp(session)
 
-    extnum = int(data[extn])
+    extn = data.get('extn', '').strip()
+    if not (len(extn) == 4 and extn.isascii() and extn.isdigit()):
+        session['error'] = 'Extension must be a four-digit number'
+        raise web.HTTPFound('/')
+    extnum = int(extn)
     if extnum < 2000 or extnum >= 7000:
-        session['error'] = 'Invalid extension number'
+        session['error'] = 'Extension number must start with 2, 3, 4, 5, or 6'
         raise web.HTTPFound('/')
 
     if dbconn is None:
         await init_db_pool()
 
+    name = data.get('name', '')
+    publish = 't' if data.get('publish') else 'f'
     authcode = ''.join([str(random.randint(0, 9)) for _ in range(12)])
-    n = await dbconn.execute('INSERT INTO registered_extensions (extn, name, userid, auth_code, publish) VALUES ($1, $2, $3, $4, $5)', data[extn], data[name], int(session['uid']), authcode, data[publish])
+    try:
+        n = await dbconn.execute('INSERT INTO registered_extensions (extn, name, userid, auth_code, publish) VALUES ($1, $2, $3, $4, $5)', extnum, name, int(session['uid']), authcode, publish)
+    except asyncpg.UniqueViolationError:
+        session['error'] = 'That extension is already taken; please choose another'
+        raise web.HTTPFound('/')
     if n != 'INSERT 0 1':
         session['error'] = 'Could not subscribe service; contact support'
         print(f'While creating extension: {n}')
@@ -261,7 +296,10 @@ if __name__ == '__main__':
     aiohttp_session.setup(app, EncryptedCookieStorage(
         cookiekey,
         cookie_name='session',
-        secure=True,
+        # DEV ONLY: a Secure cookie is dropped by browsers over plain http,
+        # which would break /dev/login over http://localhost. In production
+        # (DEV_MODE False) this stays True, exactly as before.
+        secure=not DEV_MODE,
         samesite='strict'
     ))
 
@@ -272,25 +310,43 @@ if __name__ == '__main__':
 
     app.add_routes([web.get('/', homepage)])
     app.add_routes([web.get('/directory', directory)])
+    app.add_routes([web.get('/api/directory.json', directory_json)])
 
     app.add_routes([web.post('/rename_extn', rename_extn)])
     app.add_routes([web.post('/delete_extn', delete_extn)])
     app.add_routes([web.post('/create_extn', create_extn)])
     app.add_routes([web.post('/publish_extn', publish_extn)])
-    app.add_routes([web.post('/unpublish_extn', publish_extn)])
+    app.add_routes([web.post('/unpublish_extn', unpublish_extn)])
     app.add_routes([web.post('/prov_to_sip', prov_to_sip)])
 
     app.add_routes([web.static('/static', os.path.join(os.getcwd(), 'static'))])
 
-    asyncio.run(init_saml_settings())
+    if DEV_MODE:
+        # DEV ONLY: forge-a-session login so authenticated flows work without an IdP.
+        app.add_routes([web.get('/dev/login', dev_login)])
 
-    try:
-        os.unlink(socketpath)
-    except:
-        pass
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.bind(socketpath)
-    os.chmod(socketpath, 0o666)
-    web.run_app(app, sock=sock)
+    if DEV_MODE:
+        # DEV ONLY: the production init hits the remote IdP metadata endpoint
+        # (identity.shady.tel); skip it since SAML is unused in dev.
+        print('STEAKWEB_DEV set: skipping SAML IdP metadata fetch')
+    else:
+        asyncio.run(init_saml_settings())
+
+    if DEV_MODE:
+        # DEV ONLY: bind a TCP port so a browser/curl can reach the app directly
+        # (production serves over the unix socket in the else branch below).
+        host = os.environ.get('STEAKWEB_DEV_HOST', '127.0.0.1')
+        port = int(os.environ.get('STEAKWEB_DEV_PORT', '8080'))
+        print(f'STEAKWEB_DEV set: serving on http://{host}:{port}')
+        web.run_app(app, host=host, port=port)
+    else:
+        try:
+            os.unlink(socketpath)
+        except:
+            pass
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.bind(socketpath)
+        os.chmod(socketpath, 0o666)
+        web.run_app(app, sock=sock)
 
 # vim: set ts=4 sw=4 expendtab

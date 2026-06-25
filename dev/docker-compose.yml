@@ -1,0 +1,37 @@
+# dev/docker-compose.yml  --  Local Postgres for steakweb dev/testing (DEV ONLY)
+#
+# Brings up a throwaway Postgres with the reconstructed schema + seed data
+# applied automatically on first boot. Exposed on host port 5433 (NOT the
+# default 5432) so it won't clash with any Postgres you already run.
+#
+#   Start:  docker compose -f dev/docker-compose.yml up -d
+#   Stop:   docker compose -f dev/docker-compose.yml down
+#   Reset:  docker compose -f dev/docker-compose.yml down -v   (drops the volume,
+#           so schema.sql + seed.sql are re-applied on the next up)
+#
+# The init scripts in /docker-entrypoint-initdb.d are only run when the data
+# directory is empty (i.e. first boot / after `down -v`).
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: steakweb-dev-db
+    environment:
+      POSTGRES_USER: steak
+      POSTGRES_PASSWORD: steak
+      POSTGRES_DB: steak
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - steakweb-dev-pgdata:/var/lib/postgresql/data
+      # Applied in filename order: 01 schema, then 02 seed.
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U steak -d steak"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  steakweb-dev-pgdata:
