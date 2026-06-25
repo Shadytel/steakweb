@@ -139,21 +139,28 @@ async def delete_extn(request):
 
 async def create_extn(request):
     # make a new extension with a random auth_code
-    # if the DB doesn't like it, give the error in session[error]
+    # validate the submitted extension up front so bad input (e.g. letters)
+    # gives the customer an error instead of a 500
     data = await request.post()
     session = await aiohttp_session.get_session(request)
     check_session_exp(session)
 
-    extnum = int(data[extn])
+    extn = data.get('extn', '').strip()
+    if not (len(extn) == 4 and extn.isascii() and extn.isdigit()):
+        session['error'] = 'Extension must be a four-digit number'
+        raise web.HTTPFound('/')
+    extnum = int(extn)
     if extnum < 2000 or extnum >= 7000:
-        session['error'] = 'Invalid extension number'
+        session['error'] = 'Extension number must start with 2, 3, 4, 5, or 6'
         raise web.HTTPFound('/')
 
     if dbconn is None:
         await init_db_pool()
 
+    name = data.get('name', '')
+    publish = 't' if data.get('publish') else 'f'
     authcode = ''.join([str(random.randint(0, 9)) for _ in range(12)])
-    n = await dbconn.execute('INSERT INTO registered_extensions (extn, name, userid, auth_code, publish) VALUES ($1, $2, $3, $4, $5)', data[extn], data[name], int(session['uid']), authcode, data[publish])
+    n = await dbconn.execute('INSERT INTO registered_extensions (extn, name, userid, auth_code, publish) VALUES ($1, $2, $3, $4, $5)', extnum, name, int(session['uid']), authcode, publish)
     if n != 'INSERT 0 1':
         session['error'] = 'Could not subscribe service; contact support'
         print(f'While creating extension: {n}')
