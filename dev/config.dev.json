@@ -1,0 +1,28 @@
+{
+    "saml_settings": {
+        "strict": false,
+        "debug": true,
+        "sp": {
+            "entityId": "http://localhost:8080/saml/service-provider-metadata",
+            "assertionConsumerService": {
+                "url": "http://localhost:8080/saml/acs",
+                "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+            },
+            "NameIDFormat": "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
+        },
+        "security": {
+            "wantMessagesSigned": false,
+            "wantAssertionsSigned": false
+        }
+    },
+    "saml_req_data": {
+        "https": "off",
+        "http_host": "localhost",
+        "server_port": "8080",
+        "script_name": "/"
+    },
+    "socket_path": "/tmp/steakweb-dev.sock",
+    "dbconnstr": "postgresql://steak:steak@127.0.0.1:5433/steak",
+    "cookiekey": "ARatgnovUSdf-o6HBauRk7w1zAhtWDDHJsDC3CwzRyA=",
+    "idp_metadata": "https://identity.invalid.example/application/saml/steak/metadata/"
+}

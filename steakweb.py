@@ -53,6 +53,31 @@ def gen_sip_pw(length=24):
     characters = string.ascii_letters + string.digits + '_-+!@#$%^&*()='
     return ''.join(random.choice(characters) for _ in range(length))
 
+### DEV ONLY ------------------------------------------------------------------
+# Everything guarded by STEAKWEB_DEV is completely inert in production: when the
+# env var is unset, DEV_MODE is False, the dev route is never registered, and
+# none of this code path runs. It exists only so a developer can exercise the
+# authenticated flows (homepage, create_extn, ...) locally without a real
+# Authentik/SAML IdP. See dev/README.md.
+DEV_MODE = bool(os.environ.get('STEAKWEB_DEV'))
+
+async def dev_login(request):
+    # DEV ONLY: forge a logged-in session (no IdP). Mirrors the shape that
+    # saml_acs() produces: uid, attributes (with a goauthentik username), iat.
+    # Append ?admin=1 to also join the "Extension Admins" group.
+    session = await aiohttp_session.new_session(request)
+    session['uid'] = os.environ.get('STEAKWEB_DEV_UID', '1010')
+    username = os.environ.get('STEAKWEB_DEV_USER', 'devuser')
+    attributes = {
+        'http://schemas.goauthentik.io/2021/02/saml/username': [username],
+    }
+    if 'admin' in request.query:
+        attributes['http://schemas.xmlsoap.org/claims/Group'] = ['Extension Admins']
+    session['attributes'] = attributes
+    session['iat'] = time.time()
+    raise web.HTTPFound('/')
+### END DEV ONLY --------------------------------------------------------------
+
 ### get request handlers
 
 async def homepage(request):
@@ -271,7 +296,10 @@ if __name__ == '__main__':
     aiohttp_session.setup(app, EncryptedCookieStorage(
         cookiekey,
         cookie_name='session',
-        secure=True,
+        # DEV ONLY: a Secure cookie is dropped by browsers over plain http,
+        # which would break /dev/login over http://localhost. In production
+        # (DEV_MODE False) this stays True, exactly as before.
+        secure=not DEV_MODE,
         samesite='strict'
     ))
 
@@ -293,15 +321,32 @@ if __name__ == '__main__':
 
     app.add_routes([web.static('/static', os.path.join(os.getcwd(), 'static'))])
 
-    asyncio.run(init_saml_settings())
+    if DEV_MODE:
+        # DEV ONLY: forge-a-session login so authenticated flows work without an IdP.
+        app.add_routes([web.get('/dev/login', dev_login)])
 
-    try:
-        os.unlink(socketpath)
-    except:
-        pass
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.bind(socketpath)
-    os.chmod(socketpath, 0o666)
-    web.run_app(app, sock=sock)
+    if DEV_MODE:
+        # DEV ONLY: the production init hits the remote IdP metadata endpoint
+        # (identity.shady.tel); skip it since SAML is unused in dev.
+        print('STEAKWEB_DEV set: skipping SAML IdP metadata fetch')
+    else:
+        asyncio.run(init_saml_settings())
+
+    if DEV_MODE:
+        # DEV ONLY: bind a TCP port so a browser/curl can reach the app directly
+        # (production serves over the unix socket in the else branch below).
+        host = os.environ.get('STEAKWEB_DEV_HOST', '127.0.0.1')
+        port = int(os.environ.get('STEAKWEB_DEV_PORT', '8080'))
+        print(f'STEAKWEB_DEV set: serving on http://{host}:{port}')
+        web.run_app(app, host=host, port=port)
+    else:
+        try:
+            os.unlink(socketpath)
+        except:
+            pass
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.bind(socketpath)
+        os.chmod(socketpath, 0o666)
+        web.run_app(app, sock=sock)
 
 # vim: set ts=4 sw=4 expendtab
