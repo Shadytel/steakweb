@@ -1,9 +1,9 @@
 {% extends "site.html" %}
-{% block title %}STEAK: Directory{% endblock title %}
-{% block headline %}STEAK: Directory{% endblock headline %}
+{% block title %}Shadytel Telephony Enrollment &amp; Activation Kit: Directory{% endblock title %}
+{% block headline %}Shadytel Telephony Enrollment &amp; Activation Kit{% endblock headline %}
 
 {% block body %}
-<h3>Published Extensions</h3>
+<h3>Directory</h3>
 <table border="1">
   <tr>
     <th>Extension</th>
@@ -17,7 +17,6 @@
         {{e["name"]}}
       </td>
       <td>
-        <button onclick="window.dialer.dial('{{e["extn"]}}')">Dial</button>
       </td>
     </tr>
   {% endfor %}

@@ -1,9 +1,20 @@
 {% extends "site.html" %}
-{% block title %}STEAK: My Extensions{% endblock title %}
-{% block headline %}STEAK: My Extensions{% endblock headline %}
+{% block title %}Shadytel Telephony Enrollment &amp; Activation Kit: My Extensions{% endblock title %}
+{% block headline %}Shadytel Telephony Enrollment &amp; Activation Kit{% endblock headline %}
 
 {% block body %}
 <p>Welcome, {{attributes['http://schemas.goauthentik.io/2021/02/saml/username'][0]}}!</p>
+
+<p>This year, Shadytel is inviting you to self-install. For standard service:</p>
+
+<ul>
+  <li>If you have not already done so, please register an
+      extension below.</li>
+  <li>Locate the nearest Shadystake™ and plug in to an available port. Note that center plugs are for special lines.</li>
+  <li>Lift the receiver and follow the instructions.</li>
+</ul>
+
+<p>For help or non-standard service, please come see as at the Shadytel Customer Experience Centre.</p>
 
 <h3>My Extensions</h3>
 {% if extensions %}
@@ -26,16 +37,18 @@
         </form>
       </td>
       <td>
-        <form>
-          <input type="checkbox" name="published" value="1" {% if e["published"] %}checked{% endif %}>
+        <form action="/publish_extn" method="post">
+          <input type="hidden" name="extn" value="{{e["extn"]}}">
+          <input type="checkbox" name="published" value="1" {% if e["publish"] %}checked{% endif %}
+          onclick="this.form.submit()">
         </form>
       </td>
       <td>{% if e["switch"] == 11 %}SIP{% else %}TDM{% endif %}</td>
       <td>
         {% if e["switch"] == 11 %}
-          <button onclick="alert('Not implemented')">Get Credentials</button>
-        {% else %}
-          <button onclick="window.dialer.dialDTMF('{{e["auth_code"]}}')">Play Auth Code</button>
+          <button onclick="alert('Use the following to configure your SIP client:\n\nServer: sip.shady.tel\nUsername: {{e["extn"]}}\nPassword: {{e["auth_code"]}}')">Get Credentials</button>
+        {% elif e["auth_code"] %}
+          <button onclick="alert('Your activation code is:\n\n' + '{{e["auth_code"]}}'.replace(/(\d{3})(?=\d)/g, '$1 '))">Get Credentials</button><br />
         {% endif %}
       </td>
     </tr>
@@ -46,13 +59,16 @@
 {% endif %}
 
 <h3>Add a New Extension</h3>
-<form action="/app/extn" method="post">
+<form action="/create_extn" method="post">
   <label for="extn">Extension:</label>
   <input type="text" name="extn" placeholder="NXXX" maxlength="4" minlength="4" required>
+  <br />
   <label for="name">Name:</label>
   <input type="text" name="name" placeholder="Name" required>
+  <br />
   <label for="published">Published:</label>
-  <input type="checkbox" name="published" value="1" checked>
+  <input type="checkbox" name="publish" value="1" checked>
+  <br />
   <label for="type">Type:</label>
   <select name="type">
     <option value="pots" selected>POTS</option>
