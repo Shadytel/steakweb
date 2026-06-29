@@ -12,7 +12,7 @@ import json
 from onelogin.saml2.auth import OneLogin_Saml2_Auth
 from onelogin.saml2.idp_metadata_parser import OneLogin_Saml2_IdPMetadataParser
 import os
-import random
+import secrets
 import socket
 import stat
 import string
@@ -50,9 +50,8 @@ def check_auth_isadmin(session):
     return False
 
 def gen_sip_pw():
-    characters = string.ascii_letters + string.digits + '_-+!@#$%^&*()='
-    return ''.join(random.choice(characters) for _ in range(length))
-
+    return secrets.token_urlsafe(8)
+    
 ### get request handlers
 
 async def homepage(request):
@@ -63,9 +62,9 @@ async def homepage(request):
         await init_db_pool()
     rows = None
     if check_auth_isadmin(session):
-        rows = await dbconn.fetch("SELECT extn, name, switch IS NOT NULL AS prov, auth_code, publish FROM registered_extensions WHERE provisioned = 't' ORDER BY extn")
+        rows = await dbconn.fetch("SELECT extn, name, switch, auth_code, publish FROM registered_extensions WHERE provisioned = 't' ORDER BY extn")
     else:
-        rows = await dbconn.fetch("SELECT extn, name, switch IS NOT NULL AS prov, auth_code, publish FROM registered_extensions WHERE userid = $1 ORDER BY extn", int(session['uid']))
+        rows = await dbconn.fetch("SELECT extn, name, switch, auth_code, publish FROM registered_extensions WHERE userid = $1 ORDER BY extn", int(session['uid']))
 
     # render the template with the list and the status of the last request (from the session)
     context = { 'extensions': rows, 'error': session.get('error', None), 'attributes': session.get('attributes', None) }
@@ -108,7 +107,7 @@ async def rename_extn(request):
     if check_auth_isadmin(session):
         n = await dbconn.execute('UPDATE registered_extensions SET name = $1 WHERE extn = $2', data['name'], int(data['extn']))
     else:
-        n = await dbconn.execute('UPDATE registered_extensions SET name = $1 WHERE extn = $2 AND userid = $3', data['name'], int(data['extn']), int(session['uid']))
+        n = await dbconn.execute('UPDATE registered_extensions SET name = $1 WHERE extn = $2 AND userid = $3', data['name'], int(data['extn']),int(session['uid']))
 
     if n != 'UPDATE 1':
         session['error'] = 'Could not change directory name; contact support'
@@ -144,7 +143,7 @@ async def create_extn(request):
     session = await aiohttp_session.get_session(request)
     check_session_exp(session)
 
-    extnum = int(data[extn])
+    extnum = int(data['extn'])
     if extnum < 2000 or extnum >= 7000:
         session['error'] = 'Invalid extension number'
         raise web.HTTPFound('/')
@@ -152,11 +151,20 @@ async def create_extn(request):
     if dbconn is None:
         await init_db_pool()
 
-    authcode = ''.join([str(random.randint(0, 9)) for _ in range(12)])
-    n = await dbconn.execute('INSERT INTO registered_extensions (extn, name, userid, auth_code, publish) VALUES ($1, $2, $3, $4, $5)', data[extn], data[name], int(session['uid']), authcode, data[publish])
-    if n != 'INSERT 0 1':
-        session['error'] = 'Could not subscribe service; contact support'
-        print(f'While creating extension: {n}')
+    if data['type'] == 'sip':
+        switch = 11
+        authcode = gen_sip_pw()
+    else:
+        switch = None
+        authcode = ''.join([str(secrets.randbelow(10)) for _ in range(12)])
+    try:
+        n = await dbconn.execute('INSERT INTO registered_extensions (extn, name, userid, auth_code, publish, switch) VALUES ($1, $2, $3, $4, $5, $6)', extnum, data['name'], int(session['uid']), authcode, data.get('publish', '1') == '1', switch)
+        if n != 'INSERT 0 1':
+            session['error'] = 'Could not subscribe service; contact support'
+            print(f'While creating extension: {n}')
+    except asyncpg.UniqueViolationError as e:
+        session['error'] = f'Extension {extnum} already exists'
+        print(f'While creating extension: {e}')
 
     raise web.HTTPFound('/')
 
@@ -170,33 +178,13 @@ async def publish_extn(request):
 
     n = None
     if check_auth_isadmin(session):
-        n = await dbconn.execute("UPDATE registered_extensions SET publish = 't' WHERE extn = $1", int(data['extn']))
+        n = await dbconn.execute("UPDATE registered_extensions SET publish = $2 WHERE extn = $1", int(data['extn']), data.get('published', '0')== '1')
     else:
-        n = await dbconn.execute("UPDATE registered_extensions SET publish = 't' WHERE extn = $1 AND userid = $2", int(data['extn']), int(session['uid']))
+        n = await dbconn.execute("UPDATE registered_extensions SET publish = $2 WHERE extn = $1 AND userid = $3", int(data['extn']), data.get('publish', '1') == '1', int(session['uid']))
 
     if n != 'UPDATE 1':
         session['error'] = 'Could not change directory name; contact support'
         print(f'While publishing extension: {n}')
-
-    raise web.HTTPFound('/')
-
-async def unpublish_extn(request):
-    # just unset the publish flag
-    data = await request.post()
-    session = await aiohttp_session.get_session(request)
-    check_session_exp(session)
-    if dbconn is None:
-        await init_db_pool()
-
-    n = None
-    if check_auth_isadmin(session):
-        n = await dbconn.execute("UPDATE registered_extensions SET publish = 'f' WHERE extn = $1", int(data['extn']))
-    else:
-        n = await dbconn.execute("UPDATE registered_extensions SET publish = 'f' WHERE extn = $1 AND userid = $2", int(data['extn']), int(session['uid']))
-
-    if n != 'UPDATE 1':
-        session['error'] = 'Could not change directory name; contact support'
-        print(f'While unpublishing extension: {n}')
 
     raise web.HTTPFound('/')
 
@@ -277,7 +265,6 @@ if __name__ == '__main__':
     app.add_routes([web.post('/delete_extn', delete_extn)])
     app.add_routes([web.post('/create_extn', create_extn)])
     app.add_routes([web.post('/publish_extn', publish_extn)])
-    app.add_routes([web.post('/unpublish_extn', publish_extn)])
     app.add_routes([web.post('/prov_to_sip', prov_to_sip)])
 
     app.add_routes([web.static('/static', os.path.join(os.getcwd(), 'static'))])
